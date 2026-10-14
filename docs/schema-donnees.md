@@ -1,7 +1,7 @@
-﻿# Schéma de données — VéloVille V1
+# Schéma de données
 
-Ce document présente la modélisation de la base de données relationnelle mise en place pour la plateforme VéloVille V1. Il s'appuie sur les besoins exprimés dans le cahier des charges et respecte les conventions de la méthode Merise.
-
+À compléter : MLD textuel ou image, description des tables, clés et contraintes,
+règles de gestion portées par le schéma.
 ---
 
 ## 1. Modèle Logique de Données (MLD textuel)
@@ -18,7 +18,7 @@ La base de données est structurée autour de 4 tables pour couvrir les données
 ## 2. Description des tables et dictionnaire des données
 
 ### Table `STATION`
-Cette table sert de référentiel pour l'ensemble des 120 stations du réseau.
+Cette table sert de référentiel  pour l'ensemble des 120 stations du réseau.
 
 | Attribut | Type SQL | Nullable | Contraintes / Clés | Description métier |
 |---|---|---|---|---|
@@ -33,7 +33,7 @@ Cette table sert de référentiel pour l'ensemble des 120 stations du réseau.
 ---
 
 ### Table `TRAJET`
-Elle enregistre chaque location de vélo effectuée sur le réseau.
+Elle enregistre chaque location de vélo effectuée sur le réseau .
 
 | Attribut | Type SQL | Nullable | Contraintes / Clés | Description métier |
 |---|---|---|---|---|
@@ -49,7 +49,7 @@ Elle enregistre chaque location de vélo effectuée sur le réseau.
 ---
 
 ### Table `INCIDENT`
-Elle centralise le suivi des dysfonctionnements signalés sur le terrain.
+Elle centralise le suivi  des dysfonctionnements signalés sur le terrain.
 
 | Attribut | Type SQL | Nullable | Contraintes / Clés | Description métier |
 |---|---|---|---|---|
@@ -66,7 +66,7 @@ Elle centralise le suivi des dysfonctionnements signalés sur le terrain.
 ---
 
 ### Table `UTILISATEUR`
-Elle gère les accès sécurisés à l'API et au tableau de bord.
+Elle gère les accès sécurisés à l'API et au tableau de bord .
 
 | Attribut | Type SQL | Nullable | Contraintes / Clés | Description métier |
 |---|---|---|---|---|
@@ -91,10 +91,38 @@ Elle gère les accès sécurisés à l'API et au tableau de bord.
 
 ## 4. Règles de gestion portées par le schéma relationnel
 
-- **RG1 (Capacité strictement positive)** : une contrainte `CHECK (capacite > 0)` interdit les stations à 0 place.
-- **RG2 & RG3 (Validité des stations)** : l'intégrité référentielle empêche de lier un trajet à une station fictive.
-- **RG4 (Durée positive)** : la contrainte `CHECK (duree_secondes > 0)` écarte les trajets aberrants de 0 seconde ou négatifs.
-- **RG5 (Protection des données / RGPD)** : la base ne conserve que le pseudonyme technique `usager_ref` et ne stocke aucune donnée nominative.
-- **RG6 (Exclusivité de la cible)** : une contrainte `CHECK` vérifie qu'un incident vise soit un vélo, soit une station, mais jamais les deux en même temps ni aucun des deux.
-- **RG7 (Machine à états des statuts)** : le champ `statut` est borné par `CHECK` aux seules valeurs `ouvert`, `en_cours` et `resolu`.
-- **RG8 (Cohérence des dates de résolution)** : une contrainte `CHECK` s'assure qu'une date de résolution n'existe que si le statut est `resolu`, et qu'elle est toujours postérieure ou égale à la date du signalement.
+
+* **RG1 (Capacité strictement positive)** : une contrainte `CHECK (capacite > 0)` interdit les stations à 0 place.
+* **RG2 & RG3 (Validité des stations)** : l'intégrité référentielle empêche de lier un trajet à une station fictive.
+* **RG4 (Durée positive)** : la contrainte `CHECK (duree_secondes > 0)` écarte les trajets aberrants de 0 seconde ou négatifs.
+* **RG5 (Protection des données / RGPD)** : la base ne conserve que le pseudonyme technique `usager_ref` et ne stocke aucune donnée nominative.
+
+* **RG6 (Exclusivité de la cible)** : une contrainte `CHECK` vérifie qu'un incident vise soit un vélo, soit une station, mais jamais les deux en même temps ni aucun des deux.
+* **RG7 (Machine à états des statuts)** : le champ `statut` est borné par `CHECK` aux seules valeurs `ouvert`, `en_cours` et `resolu`.
+* **RG8 (Cohérence des dates de résolution)** : une contrainte `CHECK` s'assure qu'une date de résolution n'existe que si le statut est `resolu`, et qu'elle est toujours postérieure ou égale à la date du signalement.
+
+
+
+---
+
+## 5. Rapport d'audit des exports bruts de billettique
+
+Les trois exports CSV (`stations.csv`, `trajets.csv`, `incidents.csv`) ont été audités.
+
+### Synthèse quantitative des anomalies et politiques de traitement
+
+| Fichier source | Règle / Contrainte | Défaut identifié | Nb lignes | Traitement retenu |
+|---|---|---|---|---|
+| `stations.csv` | Référentiel | Aucune anomalie détectée (120 stations conformes) | 0 | Importation intégrale |
+| `trajets.csv` | Clé primaire (`trajet_id`) | Présence de doublons stricts sur la clé primaire | 33 | Dédoublonnage (1ère occurrence conservée) |
+| `trajets.csv` | RG2 / RG3 (Intégrité FK) | Référence à une station inexistante (`S999`) | 21 | Rejet journalisé |
+| `trajets.csv` | Format horodatage | Format date non ISO (`JJ/MM/AAAA HH:MM`) | 12 | Normalisation en format ISO `AAAA-MM-JJ HH:MM:SS` |
+| `trajets.csv` | RG4 (Durée valide) | Durées de trajets négatives ou nulles | 30 | Rejet journalisé |
+| `incidents.csv` | RG7 (Machine à états) | Statut non normalisé avec espace (`en cours`) | 138 | Normalisation automatique en `en_cours` |
+| `incidents.csv` | RG8 (Cohérence temporelle) | Date de résolution antérieure au signalement | 9 | Rejet journalisé |
+
+### Gestion du traitement des anomalies
+Correction  : appliquée lorsque la donnée d'origine est récupérable sans perte d'information (standardisation de la casse du statut, conversion de la date au format ISO).
+
+Rejet de la ligne : appliqué dès lors qu'une contrainte d'intégrité ou de validité métier est rompue (station inexistante, durée de course négative, incohérence temporelle).
+. 
