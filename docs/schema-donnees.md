@@ -125,4 +125,3 @@ Les trois exports CSV (`stations.csv`, `trajets.csv`, `incidents.csv`) ont été
 Correction  : appliquée lorsque la donnée d'origine est récupérable sans perte d'information (standardisation de la casse du statut, conversion de la date au format ISO).
 
 Rejet de la ligne : appliqué dès lors qu'une contrainte d'intégrité ou de validité métier est rompue (station inexistante, durée de course négative, incohérence temporelle).
-. 
