@@ -1,15 +1,14 @@
-"""Calcul des trois indicateurs (module métier testé).
+﻿"""Calcul des trois indicateurs métiers (exécutés en base PostgreSQL).
 
-À compléter : activite_par_jour(session, date_debut, date_fin),
-stations_actives(session, limite) et incidents_par_statut(session).
-Les routeurs ne font qu'appeler ces fonctions.
+Conformément à l'exigence de performance 7.1 :
+Les indicateurs sont calculés par agrégation directe en base de données,
+jamais en mémoire applicative.
 """
+
 from datetime import date
 from typing import Any, Dict, List, Optional
-from sqlalchemy import func, select
+from sqlalchemy import func, select, table, column, text
 from sqlalchemy.orm import Session
-
-from api.models import Incident, Station, Trajet
 
 
 def activite_par_jour(
@@ -17,91 +16,137 @@ def activite_par_jour(
     date_debut: Optional[date] = None,
     date_fin: Optional[date] = None,
 ) -> List[Dict[str, Any]]:
-    """F7 : Nombre de trajets par jour sur une période."""
-    jour_col = func.date(Trajet.depart_horodatage).label("jour")
-    stmt = select(jour_col, func.count(Trajet.trajet_id).label("total_trajets"))
+    """Calcule le nombre de trajets par jour sur une période donnée (F7 / REC-09)."""
+    trajet = table(
+        "trajet",
+        column("trajet_id"),
+        column("depart_horodatage"),
+    )
+
+    col_jour = func.substr(trajet.c.depart_horodatage, 1, 10).label("jour")
+    stmt = select(col_jour, func.count().label("nb_trajets")).select_from(trajet)
 
     if date_debut:
-        stmt = stmt.where(func.date(Trajet.depart_horodatage) >= date_debut)
+        stmt = stmt.where(func.substr(trajet.c.depart_horodatage, 1, 10) >= str(date_debut))
     if date_fin:
-        stmt = stmt.where(func.date(Trajet.depart_horodatage) <= date_fin)
+        stmt = stmt.where(func.substr(trajet.c.depart_horodatage, 1, 10) <= str(date_fin))
 
-    stmt = stmt.group_by(jour_col).order_by(jour_col.asc())
+    stmt = stmt.group_by(col_jour).order_by(col_jour.asc())
+
     resultats = session.execute(stmt).all()
 
-    return [{"jour": str(r.jour), "total_trajets": r.total_trajets} for r in resultats]
+    return [
+        {
+            "jour": str(ligne[0]),
+            "nb_trajets": int(ligne[1]),
+        }
+        for ligne in resultats
+    ]
 
 
-def stations_actives(session: Session, limite: int = 10) -> List[Dict[str, Any]]:
-    """F8 : Stations ayant le plus de mouvements (départs et arrivées)."""
+def stations_actives(
+    session: Session,
+    limite: int = 10,
+) -> List[Dict[str, Any]]:
+    """Identifie les stations les plus actives (départs et arrivées) (F8)."""
+    station = table("station", column("station_id"), column("nom"), column("commune"))
+    trajet = table(
+        "trajet",
+        column("station_depart"),
+        column("station_arrivee"),
+    )
+
     departs = (
-        select(Trajet.station_depart.label("sid"), func.count(Trajet.trajet_id).label("nb_dep"))
-        .group_by(Trajet.station_depart)
-        .subquery()
-    )
-    arrivees = (
-        select(Trajet.station_arrivee.label("sid"), func.count(Trajet.trajet_id).label("nb_arr"))
-        .where(Trajet.station_arrivee.is_not(None))
-        .group_by(Trajet.station_arrivee)
+        select(trajet.c.station_depart.label("s_id"), func.count().label("nb"))
+        .group_by(trajet.c.station_depart)
         .subquery()
     )
 
-    nb_dep = func.coalesce(departs.c.nb_dep, 0)
-    nb_arr = func.coalesce(arrivees.c.nb_arr, 0)
-    total_mouv = (nb_dep + nb_arr).label("total_mouvements")
+    arrivees = (
+        select(trajet.c.station_arrivee.label("s_id"), func.count().label("nb"))
+        .where(trajet.c.station_arrivee.isnot(None))
+        .group_by(trajet.c.station_arrivee)
+        .subquery()
+    )
+
+    nb_dep = func.coalesce(departs.c.nb, 0)
+    nb_arr = func.coalesce(arrivees.c.nb, 0)
+    total = (nb_dep + nb_arr).label("total_trajets")
 
     stmt = (
         select(
-            Station.station_id,
-            Station.nom,
-            Station.commune,
-            nb_dep.label("total_departs"),
-            nb_arr.label("total_arrivees"),
-            total_mouv,
+            station.c.station_id,
+            station.c.nom,
+            station.c.commune,
+            nb_dep.label("nb_departs"),
+            nb_arr.label("nb_arrivees"),
+            total,
         )
-        .outerjoin(departs, Station.station_id == departs.c.sid)
-        .outerjoin(arrivees, Station.station_id == arrivees.c.sid)
-        .order_by(total_mouv.desc(), Station.station_id.asc())
+        .outerjoin(departs, station.c.station_id == departs.c.s_id)
+        .outerjoin(arrivees, station.c.station_id == arrivees.c.s_id)
+        .order_by(total.desc(), station.c.nom.asc())
         .limit(limite)
     )
 
     resultats = session.execute(stmt).all()
+
     return [
         {
-            "station_id": r.station_id,
-            "nom": r.nom,
-            "commune": r.commune,
-            "total_departs": int(r.total_departs),
-            "total_arrivees": int(r.total_arrivees),
-            "total_mouvements": int(r.total_mouvements),
+            "station_id": str(ligne[0]),
+            "nom": str(ligne[1]),
+            "commune": str(ligne[2]),
+            "nb_departs": int(ligne[3]),
+            "nb_arrivees": int(ligne[4]),
+            "total_trajets": int(ligne[5]),
         }
-        for r in resultats
+        for ligne in resultats
     ]
 
 
-def incidents_par_statut(session: Session) -> Dict[str, Any]:
-    """F9 : Répartition des incidents par statut et délai moyen de résolution en heures."""
-    stmt_statut = select(Incident.statut, func.count(Incident.incident_id)).group_by(Incident.statut)
-    lignes_statut = session.execute(stmt_statut).all()
-    repartition = {statut: compte for statut, compte in lignes_statut}
-
-    stmt_resolus = select(Incident.date_signalement, Incident.date_resolution).where(
-        Incident.statut == "resolu",
-        Incident.date_resolution.is_not(None),
+def incidents_par_statut(
+    session: Session,
+) -> List[Dict[str, Any]]:
+    """Répartition des incidents par statut et calcul du délai moyen de résolution (F9)."""
+    incident = table(
+        "incident",
+        column("statut"),
+        column("date_signalement"),
+        column("date_resolution"),
     )
-    resolus = session.execute(stmt_resolus).all()
 
-    if resolus:
-        delais = [
-            (r.date_resolution - r.date_signalement).total_seconds() / 3600.0
-            for r in resolus
-            if r.date_resolution >= r.date_signalement
-        ]
-        delai_moyen = round(sum(delais) / len(delais), 2) if delais else None
+    dialect_name = session.bind.dialect.name if session.bind else "postgresql"
+
+    if dialect_name == "sqlite":
+        delai_expr = func.avg(
+            (func.julianday(incident.c.date_resolution) - func.julianday(incident.c.date_signalement)) * 24.0
+        )
     else:
-        delai_moyen = None
+        delai_expr = func.round(
+            func.avg(
+                func.extract("epoch", text("date_resolution - date_signalement")) / 3600
+            ),
+            1,
+        )
 
-    return {
-        "repartition": repartition,
-        "delai_moyen_resolution_heures": delai_moyen,
-    }
+    stmt = (
+        select(
+            incident.c.statut,
+            func.count().label("nb_incidents"),
+            delai_expr.label("delai_moyen_heures"),
+        )
+        .group_by(incident.c.statut)
+        .order_by(incident.c.statut.asc())
+    )
+
+    resultats = session.execute(stmt).all()
+
+    return [
+        {
+            "statut": str(ligne[0]),
+            "nb_incidents": int(ligne[1]),
+            "delai_moyen_heures": (
+                round(float(ligne[2]), 1) if ligne[2] is not None else None
+            ),
+        }
+        for ligne in resultats
+    ]

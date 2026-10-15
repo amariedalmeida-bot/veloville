@@ -21,7 +21,7 @@ from typing import Any, Optional, Set, Tuple
 
 
 # ==============================================================================
-# FIABILISATION 
+# FIABILISATION
 # ==============================================================================
 
 def fiabiliser_horodatage(valeur: Optional[str]) -> Tuple[Optional[str], Optional[str]]:
@@ -39,12 +39,17 @@ def fiabiliser_horodatage(valeur: Optional[str]) -> Tuple[Optional[str], Optiona
         "%d/%m/%Y %H:%M:%S",
         "%d/%m/%Y %H:%M",
         "%Y-%m-%dT%H:%M:%S",
+        "%Y-%m-%d",
+        "%d/%m/%Y",
     )
 
     for format_source in formats_acceptes:
         try:
             date_objet = datetime.strptime(texte, format_source)
-            format_cible = date_objet.strftime("%Y-%m-%d %H:%M:%S")
+            if len(texte) <= 10 and ":" not in texte:
+                format_cible = date_objet.strftime("%Y-%m-%d")
+            else:
+                format_cible = date_objet.strftime("%Y-%m-%d %H:%M:%S")
 
             if texte != format_cible:
                 return format_cible, f"Format converti : '{texte}' -> '{format_cible}'"
@@ -68,16 +73,27 @@ def fiabiliser_statut(valeur: Optional[str]) -> Tuple[Optional[str], Optional[st
     statut_nettoye = texte.lower().replace(" ", "_")
     statuts_valides = {"ouvert", "en_cours", "resolu"}
 
-    if statut_nettoye in statuts_valides:
-        if texte != statut_nettoye:
-            return statut_nettoye, f"Statut corrigé : '{texte}' -> '{statut_nettoye}'"
-        return statut_nettoye, None
+    # Variantes courantes
+    mapping = {
+        "en cours": "en_cours",
+        "en_cours": "en_cours",
+        "ouvert": "ouvert",
+        "resolu": "resolu",
+        "résolu": "resolu",
+        "clos": "resolu",
+    }
+    statut_final = mapping.get(statut_nettoye, statut_nettoye)
+
+    if statut_final in statuts_valides:
+        if texte != statut_final:
+            return statut_final, f"Statut corrigé : '{texte}' -> '{statut_final}'"
+        return statut_final, None
 
     return None, f"Statut inconnu : '{texte}'"
 
 
 # ==============================================================================
-# VALIDATION DES REGLES METIER 
+# VALIDATION DES RÈGLES MÉTIER
 # ==============================================================================
 
 def valider_duree(valeur: Any) -> Tuple[bool, Optional[str]]:
@@ -131,7 +147,9 @@ def valider_chronologie_incident(
 
     return True, None
 
-"""GESTION DES DOUBLONS """
+
+# ==============================================================================
+# GESTION DES DOUBLONS
 # ==============================================================================
 
 def est_ligne_unique(ligne: dict, empreintes_vues: set) -> Tuple[bool, Optional[str]]:

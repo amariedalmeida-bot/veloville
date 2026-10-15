@@ -2,169 +2,215 @@
 
 À compléter : un test par règle, cas nominal et cas de rejet.
 """
-from datetime import datetime
+
 from api.services.fiabilisation import (
-    valider_station,
-    valider_trajet,
-    valider_incident,
-    normaliser_chaine,
+    est_ligne_unique,
+    fiabiliser_horodatage,
+    fiabiliser_statut,
+    valider_champ_facultatif,
+    valider_chronologie_incident,
+    valider_duree,
+    valider_station_existante,
 )
 
 
-def test_normaliser_chaine():
-    assert normaliser_chaine("  Lille  ") == "Lille"
-    assert normaliser_chaine("   ") is None
-    assert normaliser_chaine(None) is None
+# ==============================================================================
+# 1. Normalisation des horodatages
+# ==============================================================================
+
+def test_fiabiliser_horodatage_nominal():
+    """Cas nominal : conversion d'un horodatage valide."""
+    val, err = fiabiliser_horodatage("2026-08-05 15:00")
+    assert val == "2026-08-05 15:00:00"
+    assert err is not None  # Signale la normalisation
+
+    # Format déjà standard ISO
+    val_iso, err_iso = fiabiliser_horodatage("2026-08-05 15:00:00")
+    assert val_iso == "2026-08-05 15:00:00"
+    assert err_iso is None
 
 
-# RG1 : Station
-def test_valider_station_nominal():
-    ligne = {
-        "station_id": "ST01",
-        "nom": "Gare Lille Flandres",
-        "commune": "Lille",
-        "capacite": "20",
-        "latitude": "50.636",
-        "longitude": "3.070",
-        "date_mise_en_service": "2024-01-01",
-    }
-    donnees, erreur = valider_station(ligne)
-    assert erreur is None
-    assert donnees["station_id"] == "ST01"
-    assert donnees["capacite"] == 20
+def test_fiabiliser_horodatage_rejet():
+    """Cas de rejet : chaîne vide, None ou format non valide."""
+    val_none, err_none = fiabiliser_horodatage(None)
+    assert val_none is None
+    assert "absent" in err_none.lower()
+
+    val_bad, err_bad = fiabiliser_horodatage("date-invalide-99")
+    assert val_bad is None
+    assert "invalide" in err_bad.lower()
 
 
-def test_valider_station_capacite_invalide():
-    ligne = {
-        "station_id": "ST01",
-        "nom": "Gare",
-        "commune": "Lille",
-        "capacite": "0",
-        "latitude": "50.636",
-        "longitude": "3.070",
-        "date_mise_en_service": "2024-01-01",
-    }
-    donnees, erreur = valider_station(ligne)
-    assert donnees is None
-    assert "Capacité négative ou nulle" in erreur
+# ==============================================================================
+# 2. Règle RG7 : Normalisation des statuts d'incident
+# ==============================================================================
+
+def test_fiabiliser_statut_nominal():
+    """Cas nominal : acceptation et correction de la casse/espaces."""
+    # Déjà conforme
+    val, err = fiabiliser_statut("ouvert")
+    assert val == "ouvert"
+    assert err is None
+
+    # Conversion de casse et espaces ('En cours' -> 'en_cours')
+    val_ec, err_ec = fiabiliser_statut("En cours")
+    assert val_ec == "en_cours"
+    assert "corrigé" in err_ec.lower()
 
 
-# RG2, RG3, RG4, RG5 : Trajet
-def test_valider_trajet_nominal():
-    stations_connues = {"ST01", "ST02"}
-    ligne = {
-        "trajet_id": "TR001",
-        "velo_id": "V100",
-        "station_depart": "ST01",
-        "station_arrivee": "ST02",
-        "duree_secondes": "600",
-        "depart_horodatage": "2026-03-01T10:00:00",
-        "type_usager": "abonne",
-        "usager_ref": "USER_XYZ",
-    }
-    donnees, erreur = valider_trajet(ligne, stations_connues)
-    assert erreur is None
-    assert donnees["duree_secondes"] == 600
-    assert donnees["usager_ref"] == "USER_XYZ"
+def test_fiabiliser_statut_rejet():
+    """Cas de rejet : statut inconnu ou valeur vide."""
+    val_bad, err_bad = fiabiliser_statut("en_attente_fournisseur")
+    assert val_bad is None
+    assert "statut inconnu" in err_bad.lower()
+
+    val_empty, err_empty = fiabiliser_statut("")
+    assert val_empty is None
+    assert "vide" in err_empty.lower()
 
 
-def test_valider_trajet_station_inconnue_rejet():
-    stations_connues = {"ST01"}
-    ligne = {
-        "trajet_id": "TR002",
-        "velo_id": "V100",
-        "station_depart": "ST99",
-        "station_arrivee": "ST01",
-        "duree_secondes": "300",
-        "depart_horodatage": "2026-03-01T10:00:00",
-        "type_usager": "abonne",
-    }
-    donnees, erreur = valider_trajet(ligne, stations_connues)
-    assert donnees is None
-    assert "Station de départ inconnue" in erreur
+# ==============================================================================
+# 3. Règle RG4 : Validation de la durée d'un trajet
+# ==============================================================================
+
+def test_valider_duree_nominal():
+    """Cas nominal : durée strictement positive (> 0)."""
+    ok, err = valider_duree("180")
+    assert ok is True
+    assert err is None
+
+    ok_int, err_int = valider_duree(3600)
+    assert ok_int is True
+    assert err_int is None
 
 
-def test_valider_trajet_duree_invalide_rejet():
-    stations_connues = {"ST01"}
-    ligne = {
-        "trajet_id": "TR003",
-        "velo_id": "V100",
-        "station_depart": "ST01",
-        "station_arrivee": "",
-        "duree_secondes": "-10",
-        "depart_horodatage": "2026-03-01T10:00:00",
-        "type_usager": "occasionnel",
-    }
-    donnees, erreur = valider_trajet(ligne, stations_connues)
-    assert donnees is None
-    assert "Durée de trajet négative ou nulle" in erreur
+def test_valider_duree_rejet():
+    """Cas de rejet : durée <= 0 ou non numérique."""
+    ok_zero, err_zero = valider_duree("0")
+    assert ok_zero is False
+    assert "RG4" in err_zero
+
+    ok_neg, err_neg = valider_duree(-45)
+    assert ok_neg is False
+    assert "RG4" in err_neg
+
+    ok_txt, err_txt = valider_duree("non_numerique")
+    assert ok_txt is False
+    assert "RG4" in err_txt
 
 
-def test_valider_trajet_occasionnel_supprime_ref():
-    stations_connues = {"ST01"}
-    ligne = {
-        "trajet_id": "TR004",
-        "velo_id": "V100",
-        "station_depart": "ST01",
-        "station_arrivee": None,
-        "duree_secondes": "400",
-        "depart_horodatage": "2026-03-01T10:00:00",
-        "type_usager": "occasionnel",
-        "usager_ref": "PSEUDO_NE_PAS_GARDER",
-    }
-    donnees, erreur = valider_trajet(ligne, stations_connues)
-    assert erreur is None
-    assert donnees["usager_ref"] is None
+# ==============================================================================
+# 4. Règles RG2 et RG3 : Référencement de station
+# ==============================================================================
+
+def test_valider_station_existante_nominal():
+    """Cas nominal : la station est bien présente dans le référentiel."""
+    stations = {"S001", "S002", "S003"}
+    ok, err = valider_station_existante("S001", stations)
+    assert ok is True
+    assert err is None
 
 
-# RG6, RG7, RG8 : Incident
-def test_valider_incident_nominal():
-    stations_connues = {"ST01"}
-    ligne = {
-        "incident_id": "INC01",
-        "cible": "velo",
-        "velo_id": "V100",
-        "station_id": None,
-        "type_incident": "crevaison",
-        "statut": "en_cours",
-        "date_signalement": "2026-03-01T08:00:00",
-        "date_resolution": None,
-        "technicien": "Alex",
-    }
-    donnees, erreur = valider_incident(ligne, stations_connues)
-    assert erreur is None
-    assert donnees["cible"] == "velo"
-    assert donnees["statut"] == "en_cours"
+def test_valider_station_existante_rejet():
+    """Cas de rejet : station absente du référentiel ou identifiant vide."""
+    stations = {"S001", "S002"}
+    ok_abs, err_abs = valider_station_existante("S999", stations)
+    assert ok_abs is False
+    assert "RG2/RG3" in err_abs
+
+    ok_empty, err_empty = valider_station_existante("", stations, est_facultatif=False)
+    assert ok_empty is False
+    assert "RG2" in err_empty
 
 
-def test_valider_incident_double_cible_rejet():
-    stations_connues = {"ST01"}
-    ligne = {
-        "incident_id": "INC02",
-        "cible": "velo",
-        "velo_id": "V100",
-        "station_id": "ST01",
-        "type_incident": "crevaison",
-        "statut": "ouvert",
-        "date_signalement": "2026-03-01T08:00:00",
-    }
-    donnees, erreur = valider_incident(ligne, stations_connues)
-    assert donnees is None
-    assert "station_id doit être vide" in erreur
+# ==============================================================================
+# 5. Règle RG8 : Chronologie et cohérence des dates d'incident
+# ==============================================================================
+
+def test_valider_chronologie_incident_nominal():
+    """Cas nominal : dates cohérentes selon le statut."""
+    # Résolu avec date de résolution >= signalement
+    ok, err = valider_chronologie_incident(
+        statut="resolu",
+        date_signalement_iso="2026-08-01 10:00:00",
+        date_resolution_iso="2026-08-02 12:00:00",
+    )
+    assert ok is True
+    assert err is None
+
+    # Ouvert sans date de résolution
+    ok_open, err_open = valider_chronologie_incident(
+        statut="ouvert",
+        date_signalement_iso="2026-08-01 10:00:00",
+        date_resolution_iso=None,
+    )
+    assert ok_open is True
+    assert err_open is None
 
 
-def test_valider_incident_dates_incoherentes_rejet():
-    stations_connues = {"ST01"}
-    ligne = {
-        "incident_id": "INC03",
-        "cible": "station",
-        "velo_id": None,
-        "station_id": "ST01",
-        "type_incident": "borne_hs",
-        "statut": "resolu",
-        "date_signalement": "2026-03-02T12:00:00",
-        "date_resolution": "2026-03-01T12:00:00",
-    }
-    donnees, erreur = valider_incident(ligne, stations_connues)
-    assert donnees is None
-    assert "antérieure à la date de signalement" in erreur
+def test_valider_chronologie_incident_rejet():
+    """Cas de rejet : incohérences statut / dates."""
+    # Résolu SANS date de résolution
+    ok_no_res, err_no_res = valider_chronologie_incident(
+        statut="resolu",
+        date_signalement_iso="2026-08-01 10:00:00",
+        date_resolution_iso=None,
+    )
+    assert ok_no_res is False
+    assert "RG8" in err_no_res
+
+    # Résolution antérieure au signalement
+    ok_retro, err_retro = valider_chronologie_incident(
+        statut="resolu",
+        date_signalement_iso="2026-08-05 10:00:00",
+        date_resolution_iso="2026-08-01 10:00:00",
+    )
+    assert ok_retro is False
+    assert "RG8" in err_retro
+
+    # Ouvert AVEC une date de résolution
+    ok_bad_status, err_bad_status = valider_chronologie_incident(
+        statut="ouvert",
+        date_signalement_iso="2026-08-01 10:00:00",
+        date_resolution_iso="2026-08-02 12:00:00",
+    )
+    assert ok_bad_status is False
+    assert "RG8" in err_bad_status
+
+
+# ==============================================================================
+# 6. Détection des doublons stricts
+# ==============================================================================
+
+def test_est_ligne_unique():
+    """Vérifie l'identification des lignes uniques et doublons."""
+    vues = set()
+    ligne_a = {"id": "1", "nom": "Gare"}
+    ligne_doublon = {"nom": "Gare", "id": "1"}
+    ligne_b = {"id": "2", "nom": "Mairie"}
+
+    # Premier passage : unique
+    ok_1, _ = est_ligne_unique(ligne_a, vues)
+    assert ok_1 is True
+
+    # Deuxième passage identique : doublon rejeté
+    ok_2, err_2 = est_ligne_unique(ligne_doublon, vues)
+    assert ok_2 is False
+    assert "doublon" in err_2.lower()
+
+    # Autre ligne : acceptée
+    ok_3, _ = est_ligne_unique(ligne_b, vues)
+    assert ok_3 is True
+
+
+# ==============================================================================
+# 7. Données facultatives
+# ==============================================================================
+
+def test_valider_champ_facultatif():
+    """Vérifie qu'un champ vide/None passe sans erreur s'il est facultatif."""
+    valeur_vide = None
+    ok, val, err = valider_champ_facultatif(valeur_vide, valider_duree)
+    assert ok is True
+    assert val is None
+    assert err is None
