@@ -90,4 +90,7 @@ et `role`, et une contrainte d'unicité sur `username` (nécessaire au
 - Chaque stub indique dans sa docstring ce qu'il doit contenir. Les noms de
   fichiers et de dossiers ne doivent pas être modifiés ; vous pouvez ajouter
   des modules.
-- Mot de passe du compte PostgreSQL, secret JWT : uniquement dans `.env`.
+- Mot de passe du compte PostgreSQL et secret JWT : uniquement dans `.env`.
+  `JWT_SECRET` est obligatoire ; générer une valeur aléatoire privée avant le
+  démarrage de l'API. La durée de validité du jeton se règle avec
+  `JWT_EXPIRATION_MINUTES` (60 minutes par défaut).

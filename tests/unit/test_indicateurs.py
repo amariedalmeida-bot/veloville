@@ -8,6 +8,7 @@ import pytest
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import Session
 
+from api.schemas import ActiviteJour
 from api.services.indicateurs import (
     activite_par_jour,
     stations_actives,
@@ -91,6 +92,14 @@ def test_activite_par_jour_sans_filtre(session_test):
     assert res[0]["nb_trajets"] == 2
     assert res[1]["jour"] == "2026-08-25"
     assert res[1]["nb_trajets"] == 1
+
+
+def test_activite_par_jour_reponse_serialise_date(session_test):
+    ligne = activite_par_jour(session_test)[0]
+    reponse = ActiviteJour.model_validate(ligne)
+
+    assert reponse.date == date(2026, 8, 24)
+    assert reponse.model_dump(mode="json")["date"] == "2026-08-24"
 
 
 def test_activite_par_jour_avec_filtre(session_test):

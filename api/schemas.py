@@ -16,8 +16,7 @@ class PageReponse(BaseModel, Generic[T]):
     total: int = Field(..., description="Nombre total d'elements correspondant au filtre")
     page: int = Field(..., description="Numero de la page courante (>= 1)")
     taille_page: int = Field(..., description="Nombre d'elements par page (1 a 100)")
-    pages: int = Field(..., description="Nombre total de pages")
-    items: List[T] = Field(..., description="Elements de la page courante")
+    resultats: List[T] = Field(..., description="Elements de la page courante")
 
 
 # --- AUTHENTIFICATION ---
@@ -51,7 +50,7 @@ class TrajetRead(BaseModel):
 
     trajet_id: str
     velo_id: Optional[str] = None
-    depart_horodatage: str
+    depart_horodatage: datetime
     station_depart: str
     station_arrivee: Optional[str] = None
     duree_secondes: int
@@ -82,7 +81,7 @@ class IncidentStatutUpdate(BaseModel):
 
 # --- INDICATEURS METIER ---
 class ActiviteJour(BaseModel):
-    date: str
+    date: date
     nb_trajets: int
     duree_moyenne_secondes: float
 
@@ -92,6 +91,8 @@ class StationActive(BaseModel):
     nom: str
     commune: str
     nb_departs: int
+    nb_arrivees: int
+    total_trajets: int
 
 
 class IncidentStatut(BaseModel):

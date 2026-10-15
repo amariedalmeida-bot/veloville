@@ -2,7 +2,7 @@
 
 À compléter : déclarer les quatre tables conformément à sql/schema.sql.
 """
-from sqlalchemy import Column, Date, Float, ForeignKey, Integer, String, Text
+from sqlalchemy import Column, Date, DateTime, Float, ForeignKey, Integer, String
 from sqlalchemy.orm import relationship
 
 from api.database import Base
@@ -30,7 +30,7 @@ class Trajet(Base):
 
     trajet_id = Column(String(50), primary_key=True)
     velo_id = Column(String(50), nullable=True)
-    depart_horodatage = Column(Text, nullable=False)
+    depart_horodatage = Column(DateTime, nullable=False)
     station_depart = Column(String(50), ForeignKey("station.station_id"), nullable=False)
     station_arrivee = Column(String(50), ForeignKey("station.station_id"), nullable=True)
     duree_secondes = Column(Integer, nullable=False, default=0)
@@ -45,13 +45,13 @@ class Incident(Base):
     __tablename__ = "incident"
 
     incident_id = Column(String(50), primary_key=True)
-    date_signalement = Column(Text, nullable=False)
+    date_signalement = Column(DateTime, nullable=False)
     cible = Column(String(20), nullable=False)
     velo_id = Column(String(50), nullable=True)
     station_id = Column(String(50), ForeignKey("station.station_id"), nullable=True)
     type_incident = Column(String(100), nullable=True)
     statut = Column(String(20), nullable=False, default="ouvert")
-    date_resolution = Column(Text, nullable=True)
+    date_resolution = Column(DateTime, nullable=True)
     technicien = Column(String(100), nullable=True)
 
     station = relationship("Station", back_populates="incidents")

@@ -5,10 +5,12 @@
 
 from api.services.fiabilisation import (
     est_ligne_unique,
+    fiabiliser_cible_incident,
     fiabiliser_horodatage,
     fiabiliser_statut,
     valider_champ_facultatif,
     valider_chronologie_incident,
+    valider_capacite,
     valider_duree,
     valider_station_existante,
 )
@@ -100,7 +102,49 @@ def test_valider_duree_rejet():
 
 
 # ==============================================================================
-# 4. Règles RG2 et RG3 : Référencement de station
+# 4. Règle RG1 : Validation de la capacité d'une station
+# ==============================================================================
+
+def test_valider_capacite_nominal():
+    ok, capacite, err = valider_capacite("15")
+    assert ok is True
+    assert capacite == 15
+    assert err is None
+
+
+def test_valider_capacite_rejet():
+    for valeur in ("0", "-2", "invalide", None):
+        ok, capacite, err = valider_capacite(valeur)
+        assert ok is False
+        assert capacite is None
+        assert "RG1" in err
+
+
+# ==============================================================================
+# 5. Règle RG6 : Validation de la cible d'un incident
+# ==============================================================================
+
+def test_fiabiliser_cible_incident_nominal():
+    assert fiabiliser_cible_incident("VELO", "V001", None) == ("velo", None)
+    assert fiabiliser_cible_incident("station", None, "S001") == ("station", None)
+
+
+def test_fiabiliser_cible_incident_rejet():
+    cas_invalides = (
+        ("inconnue", "V001", None),
+        ("velo", None, None),
+        ("velo", "V001", "S001"),
+        ("station", "V001", None),
+        ("station", None, None),
+    )
+    for cible, velo_id, station_id in cas_invalides:
+        valeur, erreur = fiabiliser_cible_incident(cible, velo_id, station_id)
+        assert valeur is None
+        assert "RG6" in erreur
+
+
+# ==============================================================================
+# 6. Règles RG2 et RG3 : Référencement de station
 # ==============================================================================
 
 def test_valider_station_existante_nominal():
@@ -124,7 +168,7 @@ def test_valider_station_existante_rejet():
 
 
 # ==============================================================================
-# 5. Règle RG8 : Chronologie et cohérence des dates d'incident
+# 7. Règle RG8 : Chronologie et cohérence des dates d'incident
 # ==============================================================================
 
 def test_valider_chronologie_incident_nominal():
@@ -179,7 +223,7 @@ def test_valider_chronologie_incident_rejet():
 
 
 # ==============================================================================
-# 6. Détection des doublons stricts
+# 8. Détection des doublons stricts
 # ==============================================================================
 
 def test_est_ligne_unique():
@@ -204,7 +248,7 @@ def test_est_ligne_unique():
 
 
 # ==============================================================================
-# 7. Données facultatives
+# 9. Données facultatives
 # ==============================================================================
 
 def test_valider_champ_facultatif():

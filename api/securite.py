@@ -14,9 +14,12 @@ from api.database import get_db
 from api.models import Utilisateur
 
 # Configuration issue de l'environnement (.env)
-SECRET_KEY = os.getenv("JWT_SECRET") or os.getenv("JWT_SECRET_KEY") or "secret-cle-veloville-epreuve-2026"
+SECRET_KEY = os.getenv("JWT_SECRET") or os.getenv("JWT_SECRET_KEY")
+if not SECRET_KEY:
+    raise RuntimeError("La variable d'environnement JWT_SECRET doit être définie.")
+
 ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")
-ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("JWT_EXPIRE_MINUTES", "60"))
+ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("JWT_EXPIRATION_MINUTES", "60"))
 
 bearer_scheme = HTTPBearer(auto_error=False)
 

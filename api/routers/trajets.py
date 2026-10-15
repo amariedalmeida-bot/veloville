@@ -2,8 +2,7 @@
 
 À compléter : GET /trajets (filtres date_debut, date_fin, station ; pagination).
 """
-
-
+from datetime import date
 from typing import Optional
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
@@ -19,8 +18,9 @@ router = APIRouter(prefix="/trajets", tags=["Trajets"])
 
 @router.get("", response_model=PageReponse[TrajetRead])
 def lister_trajets(
-    station_depart: Optional[str] = Query(None, description="Filtrer par station de départ"),
-    date_debut: Optional[str] = Query(None, description="Filtrer à partir de cette date/heure"),
+    station: Optional[str] = Query(None, description="Filtrer par station de départ ou d'arrivée"),
+    date_debut: Optional[date] = Query(None, description="Date de départ minimale incluse (AAAA-MM-JJ)"),
+    date_fin: Optional[date] = Query(None, description="Date de départ maximale incluse (AAAA-MM-JJ)"),
     page: int = Query(1, ge=1, description="Numéro de la page (>= 1)"),
     taille_page: int = Query(20, ge=1, le=100, description="Nombre d'éléments par page (1 à 100)"),
     db: Session = Depends(get_db),
@@ -29,8 +29,9 @@ def lister_trajets(
     """Liste les trajets avec pagination et filtres optionnels."""
     return recuperer_trajets_pagines(
         db=db,
-        station_depart=station_depart,
+        station=station,
         date_debut=date_debut,
+        date_fin=date_fin,
         page=page,
         taille_page=taille_page,
     )

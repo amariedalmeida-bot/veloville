@@ -61,8 +61,8 @@
 ### REC-07 — Pagination
 
 * **Objectif :** Vérifier la pagination et la validation des bornes.
-* **Résultat attendu :** Structure paginée (`page`, `taille\_page`, `total`, `items`). Paramètres hors bornes renvoient une erreur HTTP 422.
-* **Résultat obtenu :** L'enveloppe JSON paginée retourne exactement le format attendu. Les requêtes avec `taille\_page < 1` ou `taille\_page > 100` lèvent bien une erreur HTTP 422 Unprocessable Entity.
+* **Résultat attendu :** Structure paginée (`total`, `page`, `taille_page`, `resultats`). Paramètres hors bornes renvoient une erreur HTTP 422.
+* **Résultat obtenu :** L'enveloppe JSON paginée retourne exactement le format attendu. Les requêtes avec `taille_page < 1` ou `taille_page > 100` lèvent bien une erreur HTTP 422 Unprocessable Entity.
 * **Statut :** **OK**
 
 ### REC-08 — Station introuvable
@@ -85,4 +85,3 @@
 * **Résultat attendu :** Affichage d'un message textuel explicite en français sans trace technique Python brute (stacktrace) lorsque l'API est indisponible ou qu'aucun résultat ne correspond aux filtres.
 * **Résultat obtenu :** Les trois états (chargement, vide, erreur) sont gérés. Lorsque l'API est coupée, l'interface affiche un bandeau rouge accessible invitant à vérifier le service, sans aucune exception Python non interceptée.
 * **Statut :** **OK**
-

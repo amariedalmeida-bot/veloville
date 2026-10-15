@@ -14,6 +14,7 @@ from api.models import Utilisateur
 from api.schemas import IncidentRead, IncidentStatutUpdate, PageReponse
 from api.securite import exiger_role, utilisateur_courant
 from api.services.incidents import (
+    TransitionStatutInvalide,
     mettre_a_jour_statut_incident,
     recuperer_incidents_pagines,
 )
@@ -46,11 +47,18 @@ def modifier_statut(
     _user: Utilisateur = Depends(exiger_role("exploitant")),
 ):
     """Modifie le statut d'un incident (réservé au rôle exploitant)."""
-    incident = mettre_a_jour_statut_incident(
-        db=db,
-        incident_id=incident_id,
-        nouveau_statut=payload.statut,
-    )
+    try:
+        incident = mettre_a_jour_statut_incident(
+            db=db,
+            incident_id=incident_id,
+            nouveau_statut=payload.statut,
+        )
+    except TransitionStatutInvalide as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Transition de statut non autorisée.",
+        ) from exc
+
     if incident is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

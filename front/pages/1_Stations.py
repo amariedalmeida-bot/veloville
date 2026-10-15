@@ -1,15 +1,6 @@
-"""Écran Stations.
+# Page de consultation des stations.
 
-À compléter : tableau des stations filtrable par commune, pagination.
-"""
-"""Écran Stations.
-
-Tableau des stations filtrable par commune, statut, avec pagination.
-"""
-"""Écran Stations.
-
-Tableau des stations filtrable par commune, statut, avec pagination.
-"""
+from typing import List
 
 import pandas as pd
 import streamlit as st
@@ -22,38 +13,79 @@ except ModuleNotFoundError:
 st.set_page_config(page_title="VéloVille - Stations", page_icon="🚲", layout="wide")
 st.title("📍 Consultation des stations")
 
+
+@st.cache_data(ttl=300)
+def charger_communes(token: str) -> List[str]:
+    """Met en cache les communes du référentiel pendant cinq minutes."""
+    return client_api.get_communes_stations(token)
+
+
 # Vérification de l'authentification
 token = st.session_state.get("token")
 if not token:
     st.warning("⚠️ Veuillez vous connecter sur la page d'accueil pour accéder aux stations.")
     st.stop()
 
-# Filtres
-col1, col2 = st.columns(2)
-with col1:
-    commune_filtre = st.text_input("Filtrer par commune", value="")
-with col2:
-    statut_filtre = st.selectbox(
-        "Filtrer par statut",
-        options=["Tous", "EN_SERVICE", "MAINTENANCE", "HORS_SERVICE"],
-    )
+# Filtre par commune
+try:
+    communes = charger_communes(token)
+except ErreurApi as e:
+    st.error(f"Erreur lors du chargement des communes : {e}")
+    st.stop()
 
-statut_param = None if statut_filtre == "Tous" else statut_filtre
-commune_param = commune_filtre.strip() if commune_filtre.strip() else None
+commune_filtre = st.selectbox(
+    "Filtrer par commune",
+    options=["Toutes"] + communes,
+)
+commune_param = None if commune_filtre == "Toutes" else commune_filtre
+
+# Pagination
+taille_page = st.selectbox(
+    "Stations par page",
+    options=[10, 20, 50],
+    index=1,
+    key="stations_taille_page",
+)
+criteres = (commune_param, taille_page)
+if st.session_state.get("_stations_criteres") != criteres:
+    st.session_state["_stations_criteres"] = criteres
+    st.session_state["stations_page"] = 1
+else:
+    st.session_state.setdefault("stations_page", 1)
 
 # Récupération et affichage
 try:
     reponse = client_api.get_stations(
         token=token,
-        page=1,
-        taille_page=100,
+        page=st.session_state["stations_page"],
+        taille_page=taille_page,
         commune=commune_param,
-        statut=statut_param,
     )
-    stations = reponse.get("items", [])
+    stations = reponse.get("resultats", [])
     total = reponse.get("total", 0)
+    nombre_pages = max(1, (total + taille_page - 1) // taille_page)
 
     st.write(f"**Nombre total de stations :** {total}")
+
+    col_precedente, col_indication, col_suivante = st.columns([1, 2, 1])
+    with col_precedente:
+        if st.button(
+            "Page précédente",
+            disabled=st.session_state["stations_page"] <= 1,
+            key="stations_page_precedente",
+        ):
+            st.session_state["stations_page"] -= 1
+            st.rerun()
+    with col_indication:
+        st.write(f"Page {st.session_state['stations_page']} sur {nombre_pages}")
+    with col_suivante:
+        if st.button(
+            "Page suivante",
+            disabled=st.session_state["stations_page"] >= nombre_pages,
+            key="stations_page_suivante",
+        ):
+            st.session_state["stations_page"] += 1
+            st.rerun()
 
     if stations:
         df = pd.DataFrame(stations)

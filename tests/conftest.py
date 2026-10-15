@@ -5,8 +5,14 @@ session de base de données de test. Aucun secret en dur : lire .env.
 """
 """Fixtures pytest communes pour les tests d'API."""
 
+import os
+import secrets
+
 import pytest
 from fastapi.testclient import TestClient
+
+if not os.getenv("JWT_SECRET") and not os.getenv("JWT_SECRET_KEY"):
+    os.environ["JWT_SECRET"] = secrets.token_urlsafe(32)
 
 from api.database import SessionLocal
 from api.main import app

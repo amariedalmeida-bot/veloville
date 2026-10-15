@@ -1,11 +1,21 @@
 """Service métier pour la consultation des stations."""
 
-from math import ceil
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from api.models import Station
+
+
+def recuperer_communes(db: Session) -> List[str]:
+    """Retourne les communes présentes dans le référentiel des stations."""
+    communes = (
+        db.query(Station.commune)
+        .distinct()
+        .order_by(Station.commune)
+        .all()
+    )
+    return [commune for (commune,) in communes]
 
 
 def recuperer_stations_paginees(
@@ -25,20 +35,16 @@ def recuperer_stations_paginees(
     # 3. On compte le total avant de découper en pages
     total = requete.count()
 
-    # 4. On calcule le nombre total de pages (arrondi supérieur)
-    total_pages = ceil(total / taille_page) if total > 0 else 1
-
-    # 5. On applique le décalage (offset) et la limite de taille pour la page demandée
+    # 4. On applique le décalage (offset) et la limite de taille pour la page demandée
     offset = (page - 1) * taille_page
-    items = requete.order_by(Station.station_id).offset(offset).limit(taille_page).all()
+    resultats = requete.order_by(Station.station_id).offset(offset).limit(taille_page).all()
 
-    # 6. On renvoie le dictionnaire conforme à notre schéma PageReponse
+    # 5. On renvoie le dictionnaire conforme au contrat de pagination
     return {
         "total": total,
         "page": page,
         "taille_page": taille_page,
-        "pages": total_pages,
-        "items": items,
+        "resultats": resultats,
     }
 
 

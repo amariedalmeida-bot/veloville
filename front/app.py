@@ -1,11 +1,3 @@
-"""Page d'accueil Streamlit : connexion.
-
-À compléter : formulaire identifiant / mot de passe, appel de POST /auth/login via
-api_client, stockage du jeton et du rôle dans st.session_state,
-message d'erreur en français en cas d'échec.
-
-Lancement : streamlit run front/app.py
-"""
 """Page d'accueil et d'authentification VéloVille."""
 
 import streamlit as st
@@ -20,7 +12,8 @@ st.set_page_config(
     layout="wide",
 )
 
-st.title("🚲 VéloVille — Supervision du réseau")
+st.title("VéloVille")
+st.write("Portail de consultation des données du service et de son activité.")
 
 # Initialisation de l'état de session
 if "token" not in st.session_state:
@@ -33,7 +26,7 @@ if "username" not in st.session_state:
 # Si déjà connecté
 if st.session_state["token"]:
     st.success(
-        f"Connecté en tant que **{st.session_state['username']}** (rôle : **{st.session_state['role']}**)."
+        f"Session ouverte. Profil actif : **{st.session_state['role'].capitalize()}**."
     )
     if st.button("Se déconnecter"):
         st.session_state["token"] = None

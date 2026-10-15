@@ -10,9 +10,22 @@ from api.database import get_db
 from api.models import Utilisateur
 from api.schemas import PageReponse, StationRead
 from api.securite import utilisateur_courant
-from api.services.stations import recuperer_station_par_id, recuperer_stations_paginees
+from api.services.stations import (
+    recuperer_communes,
+    recuperer_station_par_id,
+    recuperer_stations_paginees,
+)
 
 router = APIRouter(prefix="/stations", tags=["Stations"])
+
+
+@router.get("/communes", response_model=list[str])
+def lister_communes(
+    db: Session = Depends(get_db),
+    _user: Utilisateur = Depends(utilisateur_courant),
+) -> list[str]:
+    """Retourne les communes disponibles pour filtrer les stations."""
+    return recuperer_communes(db)
 
 
 @router.get("", response_model=PageReponse[StationRead])

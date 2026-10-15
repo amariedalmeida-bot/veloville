@@ -17,17 +17,21 @@ from typing import Any, Dict, List, Set
 
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import Session
+from dotenv import load_dotenv
 
 from api.services.fiabilisation import (
     est_ligne_unique,
+    fiabiliser_cible_incident,
     fiabiliser_horodatage,
     fiabiliser_statut,
     valider_chronologie_incident,
+    valider_capacite,
     valider_duree,
     valider_station_existante,
 )
 
 BASE_DIR = Path(__file__).resolve().parent.parent
+load_dotenv(BASE_DIR / ".env")
 DATA_DIR = BASE_DIR / "data"
 DOCS_DIR = BASE_DIR / "docs"
 DOCS_DIR.mkdir(exist_ok=True)
@@ -93,15 +97,12 @@ def importer_stations(session: Session) -> Set[str]:
                 journaliser(fichier, s_id, "station_id", s_id, "Identifiant vide ou dupliqué", "rejet")
                 continue
 
-            # 3. Capacité
-            try:
-                capacite = int(ligne.get("capacite", 0))
-                if capacite < 0:
-                    capacite = 0
-                    journaliser(fichier, s_id, "capacite", ligne.get("capacite"), "Capacité négative forcée à 0", "normalisation")
-            except (ValueError, TypeError):
-                capacite = 0
-                journaliser(fichier, s_id, "capacite", ligne.get("capacite"), "Capacité non numérique forcée à 0", "normalisation")
+            # 3. Capacité (RG1 : entier strictement positif)
+            capacite_valide, capacite, motif_capacite = valider_capacite(ligne.get("capacite"))
+            if not capacite_valide:
+                nb_rejets += 1
+                journaliser(fichier, s_id, "capacite", ligne.get("capacite"), motif_capacite, "rejet")
+                continue
 
             # 4. Coordonnées GPS
             try:
@@ -313,8 +314,26 @@ def importer_incidents(session: Session, stations_connues: Set[str]) -> None:
                 journaliser(fichier, i_id, "date_resolution", str(date_res), motif_chrono, "rejet")
                 continue
 
-            # 5. Station existante si incident station
+            # 5. Cible et référence exclusive (RG6)
+            cible_brute = (ligne.get("cible") or "").strip()
+            velo_id = (ligne.get("velo_id") or "").strip() or None
             st_id = (ligne.get("station_id") or "").strip()
+            cible, motif_cible = fiabiliser_cible_incident(cible_brute, velo_id, st_id)
+            if cible is None:
+                nb_rejets += 1
+                journaliser(fichier, i_id, "cible", cible_brute, motif_cible, "rejet")
+                continue
+            if cible != cible_brute:
+                journaliser(
+                    fichier,
+                    i_id,
+                    "cible",
+                    cible_brute,
+                    f"Cible normalisée : '{cible_brute}' -> '{cible}'",
+                    "normalisation",
+                )
+
+            # 6. Station existante si incident station
             st_valide, motif_st = valider_station_existante(st_id, stations_connues, est_facultatif=True)
             if not st_valide:
                 nb_rejets += 1
@@ -324,8 +343,8 @@ def importer_incidents(session: Session, stations_connues: Set[str]) -> None:
             incidents_valides[i_id] = {
                 "incident_id": i_id,
                 "date_signalement": date_sig,
-                "cible": (ligne.get("cible") or "").strip(),
-                "velo_id": (ligne.get("velo_id") or "").strip() or None,
+                "cible": cible,
+                "velo_id": velo_id,
                 "station_id": st_id or None,
                 "type_incident": (ligne.get("type_incident") or "").strip(),
                 "statut": statut,

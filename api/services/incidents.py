@@ -1,10 +1,21 @@
 """Service métier pour la gestion des incidents."""
 
-from math import ceil
+from datetime import datetime
 from typing import Any, Dict, Optional
 from sqlalchemy.orm import Session
 
 from api.models import Incident
+
+
+class TransitionStatutInvalide(ValueError):
+    """Indique qu'une transition de statut ne respecte pas la règle RG7."""
+
+
+_TRANSITIONS_AUTORISEES = {
+    "ouvert": {"en_cours", "resolu"},
+    "en_cours": {"resolu"},
+    "resolu": set(),
+}
 
 
 def recuperer_incidents_pagines(
@@ -20,16 +31,14 @@ def recuperer_incidents_pagines(
         requete = requete.filter(Incident.statut == statut.strip())
 
     total = requete.count()
-    total_pages = ceil(total / taille_page) if total > 0 else 1
     offset = (page - 1) * taille_page
-    items = requete.order_by(Incident.date_signalement.desc()).offset(offset).limit(taille_page).all()
+    resultats = requete.order_by(Incident.date_signalement.desc()).offset(offset).limit(taille_page).all()
 
     return {
         "total": total,
         "page": page,
         "taille_page": taille_page,
-        "pages": total_pages,
-        "items": items,
+        "resultats": resultats,
     }
 
 
@@ -43,7 +52,18 @@ def mettre_a_jour_statut_incident(
     if incident is None:
         return None
 
+    if nouveau_statut not in _TRANSITIONS_AUTORISEES.get(incident.statut, set()):
+        raise TransitionStatutInvalide
+
+    if nouveau_statut == "resolu":
+        date_resolution = datetime.now()
+        if date_resolution < incident.date_signalement:
+            raise TransitionStatutInvalide
+    else:
+        date_resolution = None
+
     incident.statut = nouveau_statut
+    incident.date_resolution = date_resolution
     db.commit()
     db.refresh(incident)
     return incident

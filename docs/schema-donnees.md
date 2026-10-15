@@ -1,140 +1,134 @@
 # Schéma de données
 
-À compléter : MLD textuel ou image, description des tables, clés et contraintes,
-règles de gestion portées par le schéma.
+Description des quatre tables déclarées dans [`sql/schema.sql`](../sql/schema.sql).
+Les types, nullabilités, clés et contraintes ci-dessous reflètent ce DDL.
+
 ---
 
 ## 1. Modèle Logique de Données (MLD textuel)
 
-La base de données est structurée autour de 4 tables pour couvrir les données d'exploitation et la gestion des accès (clés primaires soulignées et clés étrangères signalées par un dièse `#`) :
+Les clés primaires sont soulignées ; les clés étrangères sont signalées par `#`.
 
 - **STATION** (<u>station_id</u>, nom, commune, capacite, latitude, longitude, date_mise_en_service)
 - **TRAJET** (<u>trajet_id</u>, velo_id, depart_horodatage, #station_depart, #station_arrivee, duree_secondes, type_usager, usager_ref)
 - **INCIDENT** (<u>incident_id</u>, date_signalement, cible, velo_id, #station_id, type_incident, statut, date_resolution, technicien)
-- **UTILISATEUR** (<u>id</u>, username, mot_de_passe_hash, role)
+- **UTILISATEUR** (<u>id_utilisateur</u>, username, mot_de_passe_hash, role)
 
 ---
 
 ## 2. Description des tables et dictionnaire des données
 
 ### Table `STATION`
-Cette table sert de référentiel  pour l'ensemble des 120 stations du réseau.
+
+Référentiel des stations du réseau.
 
 | Attribut | Type SQL | Nullable | Contraintes / Clés | Description métier |
 |---|---|---|---|---|
-| `station_id` | `VARCHAR(10)` | Non | `PRIMARY KEY` | Identifiant unique de la station (ex. `S001`) |
-| `nom` | `VARCHAR(150)` | Non | | Nom usuel combinant la ville et le lieu (ex. `Lille - Gare`) |
-| `commune` | `VARCHAR(100)` | Non | | Commune de la métropole d'implantation |
-| `capacite` | `INTEGER` | Non | `CHECK (capacite > 0)` | Nombre de bornes d'attache disponibles (RG1) |
-| `latitude` | `NUMERIC(8, 5)` | Oui | | Coordonnée géographique WGS84 |
-| `longitude` | `NUMERIC(8, 5)` | Oui | | Coordonnée géographique WGS84 |
-| `date_mise_en_service` | `DATE` | Non | | Date d'ouverture de la station au public |
-
----
+| `station_id` | `VARCHAR(50)` | Non | `PRIMARY KEY` | Identifiant unique de la station (ex. `S001`) |
+| `nom` | `VARCHAR(255)` | Non | | Nom usuel de la station |
+| `commune` | `VARCHAR(100)` | Non | | Commune d'implantation |
+| `capacite` | `INT` | Non | `CHECK (capacite > 0)` | Capacité de la station (RG1) |
+| `latitude` | `FLOAT` | Oui | | Coordonnée géographique |
+| `longitude` | `FLOAT` | Oui | | Coordonnée géographique |
+| `date_mise_en_service` | `DATE` | Oui | | Date d'ouverture de la station au public |
 
 ### Table `TRAJET`
-Elle enregistre chaque location de vélo effectuée sur le réseau .
+
+Enregistre les locations de vélos.
 
 | Attribut | Type SQL | Nullable | Contraintes / Clés | Description métier |
 |---|---|---|---|---|
-| `trajet_id` | `VARCHAR(20)` | Non | `PRIMARY KEY` | Identifiant unique de la location (ex. `T480001`) |
-| `velo_id` | `VARCHAR(10)` | Non | | Identifiant du vélo emprunté (ex. `V1167`) |
-| `depart_horodatage` | `TIMESTAMP` | Non | | Date et heure de début du trajet |
-| `station_depart` | `VARCHAR(10)` | Non | `FOREIGN KEY -> STATION(station_id)` | Station d'emprunt obligatoire (RG2) |
-| `station_arrivee` | `VARCHAR(10)` | Oui | `FOREIGN KEY -> STATION(station_id)` | Station de retour (NULL si le vélo n'est pas encore rendu - RG3) |
-| `duree_secondes` | `INTEGER` | Non | `CHECK (duree_secondes > 0)` | Temps de parcours réel en secondes (RG4) |
-| `type_usager` | `VARCHAR(20)` | Non | `CHECK (type_usager IN ('abonne', 'occasionnel'))` | Profil d'utilisateur |
-| `usager_ref` | `VARCHAR(50)` | Oui | | Pseudonyme haché de l'abonné (RG5) |
-
----
+| `trajet_id` | `VARCHAR(50)` | Non | `PRIMARY KEY` | Identifiant unique du trajet |
+| `velo_id` | `VARCHAR(50)` | Oui | | Identifiant du vélo |
+| `depart_horodatage` | `TIMESTAMP` | Non | | Date et heure de départ |
+| `station_depart` | `VARCHAR(50)` | Non | `FOREIGN KEY -> STATION(station_id)` | Station de départ obligatoire (RG2) |
+| `station_arrivee` | `VARCHAR(50)` | Oui | `FOREIGN KEY -> STATION(station_id)` | Station d'arrivée, éventuellement inconnue (RG3) |
+| `duree_secondes` | `INT` | Non | `CHECK (duree_secondes > 0)` | Durée du trajet en secondes (RG4) |
+| `type_usager` | `VARCHAR(50)` | Oui | | Type d'usager |
+| `usager_ref` | `VARCHAR(100)` | Oui | | Pseudonyme d'usager, le cas échéant (RG5) |
 
 ### Table `INCIDENT`
-Elle centralise le suivi  des dysfonctionnements signalés sur le terrain.
+
+Enregistre les signalements de maintenance.
 
 | Attribut | Type SQL | Nullable | Contraintes / Clés | Description métier |
 |---|---|---|---|---|
-| `incident_id` | `VARCHAR(20)` | Non | `PRIMARY KEY` | Identifiant du ticket de maintenance (ex. `I2026-0001`) |
-| `date_signalement` | `TIMESTAMP` | Non | | Date et heure de création du ticket |
-| `cible` | `VARCHAR(10)` | Non | `CHECK (cible IN ('velo', 'station'))` | Élément défaillant (RG6) |
-| `velo_id` | `VARCHAR(10)` | Oui | | Renseigné uniquement si l'incident touche un vélo |
-| `station_id` | `VARCHAR(10)` | Oui | `FOREIGN KEY -> STATION(station_id)` | Renseigné uniquement si l'incident touche une station |
-| `type_incident` | `VARCHAR(100)` | Non | | Type de problème rencontré (ex. frein, pneu, borne) |
-| `statut` | `VARCHAR(20)` | Non | `CHECK (statut IN ('ouvert', 'en_cours', 'resolu'))` | Étape de traitement du ticket (RG7) |
-| `date_resolution` | `TIMESTAMP` | Oui | | Horodatage de fin d'intervention (RG8) |
-| `technicien` | `VARCHAR(100)` | Oui | | Nom de l'agent intervenant sur la panne |
-
----
+| `incident_id` | `VARCHAR(50)` | Non | `PRIMARY KEY` | Identifiant unique de l'incident |
+| `date_signalement` | `TIMESTAMP` | Non | | Date et heure du signalement |
+| `cible` | `VARCHAR(20)` | Non | `CHECK` d'exclusivité décrit en RG6 | Type de cible : vélo ou station (RG6) |
+| `velo_id` | `VARCHAR(50)` | Oui | | Référence du vélo si la cible est un vélo |
+| `station_id` | `VARCHAR(50)` | Oui | `FOREIGN KEY -> STATION(station_id)` | Référence de station si la cible est une station |
+| `type_incident` | `VARCHAR(100)` | Oui | | Type de problème signalé |
+| `statut` | `VARCHAR(20)` | Non | `DEFAULT 'ouvert'`, valeurs limitées par `CHECK` (RG7) | État de traitement |
+| `date_resolution` | `TIMESTAMP` | Oui | Cohérence avec le statut et `date_signalement` (RG8) | Date et heure de résolution |
+| `technicien` | `VARCHAR(100)` | Oui | | Nom du technicien, le cas échéant |
 
 ### Table `UTILISATEUR`
-Elle gère les accès sécurisés à l'API et au tableau de bord .
+
+Comptes utilisés pour l'authentification à l'API et au tableau de bord.
 
 | Attribut | Type SQL | Nullable | Contraintes / Clés | Description métier |
 |---|---|---|---|---|
-| `id` | `SERIAL` | Non | `PRIMARY KEY` | Identifiant technique auto-incrémenté |
-| `username` | `VARCHAR(50)` | Non | `UNIQUE` | Identifiant de connexion unique |
-| `mot_de_passe_hash` | `VARCHAR(255)` | Non | | Mot de passe sécurisé haché en bcrypt |
-| `role` | `VARCHAR(20)` | Non | `CHECK (role IN ('exploitant', 'direction'))` | Droits applicatifs attribués |
+| `id_utilisateur` | `SERIAL` | Non | `PRIMARY KEY` | Identifiant technique auto-incrémenté |
+| `username` | `VARCHAR(100)` | Non | `UNIQUE` | Identifiant de connexion |
+| `mot_de_passe_hash` | `VARCHAR(255)` | Non | | Empreinte du mot de passe |
+| `role` | `VARCHAR(20)` | Non | `CHECK (role IN ('exploitant', 'direction'))` | Rôle applicatif |
 
 ---
 
 ## 3. Clés et relations entre les données
 
-1. **Clés primaires (PK)** :  
-   Chaque table dispose d'un identifiant unique : `station_id`, `trajet_id` et `incident_id` s'appuient sur les identifiants métier fournis par les exports, tandis qu'`utilisateur` utilise un identifiant technique `id` associé à un `username` unique.
-
-2. **Clés étrangères (FK)** :  
-   - `TRAJET.station_depart` pointe vers `STATION.station_id` : il sera donc impossible d'enregistrer un trajet sans point de départ.
-   - `TRAJET.station_arrivee` pointe aussi vers `STATION.station_id`, mais autorise la valeur vide (NULL) pour gérer le cas réel des vélos non encore restitués au moment de l'export.
-   - `INCIDENT.station_id` pointe vers `STATION.station_id` : permet de relier un incident technique à sa station d'origine lorsqu'elle est concernée.
+1. **Clés primaires (PK)** : `station_id`, `trajet_id` et `incident_id` identifient respectivement les stations, trajets et incidents. La table `utilisateur` utilise `id_utilisateur` comme clé technique et `username` est également unique.
+2. **Clés étrangères (FK)** :
+   - `TRAJET.station_depart` référence `STATION.station_id` et est obligatoire.
+   - `TRAJET.station_arrivee` référence `STATION.station_id` et peut être `NULL`.
+   - `INCIDENT.station_id` référence `STATION.station_id` et peut être `NULL` lorsque la cible est un vélo.
 
 ---
 
 ## 4. Règles de gestion portées par le schéma relationnel
 
+- **RG1 — Capacité positive** : `CHECK (capacite > 0)`.
+- **RG2/RG3 — Références des trajets** : la station de départ est obligatoire et les références de départ et d'arrivée sont protégées par des clés étrangères ; la station d'arrivée peut être `NULL`.
+- **RG4 — Durée positive** : `CHECK (duree_secondes > 0)`.
+- **RG5 — Pseudonymisation** : le schéma comporte `usager_ref`, sans table d'abonnés ni donnée directement identifiante. La relation entre le type d'usager et la présence du pseudonyme n'est pas contrainte par ce DDL.
+- **RG6 — Cible d'incident exclusive** : une contrainte `CHECK` impose `cible = 'velo'` avec `velo_id` renseigné et `station_id` nul, ou `cible = 'station'` avec `station_id` renseigné et `velo_id` nul. Les références non vides sont également exigées.
+- **RG7 — Statuts d'incident** : `statut` est limité à `ouvert`, `en_cours` et `resolu`. Les transitions autorisées sont contrôlées par le service applicatif.
+- **RG8 — Dates de résolution** : la contrainte impose une date de résolution non nulle et postérieure ou égale au signalement pour un incident `resolu`, et une date nulle pour les autres statuts.
+- **Rôles** : le rôle utilisateur est limité à `exploitant` ou `direction`.
 
-* **RG1 (Capacité strictement positive)** : une contrainte `CHECK (capacite > 0)` interdit les stations à 0 place.
-* **RG2 & RG3 (Validité des stations)** : l'intégrité référentielle empêche de lier un trajet à une station fictive.
-* **RG4 (Durée positive)** : la contrainte `CHECK (duree_secondes > 0)` écarte les trajets aberrants de 0 seconde ou négatifs.
-* **RG5 (Protection des données / RGPD)** : la base ne conserve que le pseudonyme technique `usager_ref` et ne stocke aucune donnée nominative.
-
-* **RG6 (Exclusivité de la cible)** : une contrainte `CHECK` vérifie qu'un incident vise soit un vélo, soit une station, mais jamais les deux en même temps ni aucun des deux.
-* **RG7 (Machine à états des statuts)** : le champ `statut` est borné par `CHECK` aux seules valeurs `ouvert`, `en_cours` et `resolu`.
-* **RG8 (Cohérence des dates de résolution)** : une contrainte `CHECK` s'assure qu'une date de résolution n'existe que si le statut est `resolu`, et qu'elle est toujours postérieure ou égale à la date du signalement.
-
-
+Le schéma crée également des index sur `trajet.depart_horodatage`,
+`trajet.station_depart`, `trajet.station_arrivee` et `incident.statut`.
 
 ---
 
 ## 5. Rapport d'audit des exports bruts de billettique
-"""pb a ne pas prendre en comptes"""
-Les trois exports CSV (`stations.csv`, `trajets.csv`, `incidents.csv`) ont été audités.
+Les trois fichiers sources ont été recompilés à partir des données brutes avec
+les fonctions de validation de `api/services/fiabilisation.py`. Les volumes
+bruts sont de 120 stations, 2 030 trajets et 180 incidents.
 
-### Synthèse quantitative des anomalies et politiques de traitement
+### Synthèse des anomalies dans les fichiers sources
 
-| Fichier source | Règle / Contrainte | Défaut identifié | Nb lignes | Traitement retenu |
-|---|---|---|---|---|
-| `stations.csv` | Référentiel | Aucune anomalie détectée (120 stations conformes) | 0 | Importation intégrale |
-| `trajets.csv` | Clé primaire (`trajet_id`) | Présence de doublons stricts sur la clé primaire | 33 | Dédoublonnage (1ère occurrence conservée) |
-| `trajets.csv` | RG2 / RG3 (Intégrité FK) | Référence à une station inexistante (`S999`) | 21 | Rejet journalisé |
-| `trajets.csv` | Format horodatage | Format date non ISO (`JJ/MM/AAAA HH:MM`) | 12 | Normalisation en format ISO `AAAA-MM-JJ HH:MM:SS` |
-| `trajets.csv` | RG4 (Durée valide) | Durées de trajets négatives ou nulles | 30 | Rejet journalisé |
-| `incidents.csv` | RG7 (Machine à états) | Statut non normalisé avec espace (`en cours`) | 138 | Normalisation automatique en `en_cours` |
-| `incidents.csv` | RG8 (Cohérence temporelle) | Date de résolution antérieure au signalement | 9 | Rejet journalisé |
+| Fichier source | Volume brut | Règle / critère | Anomalie constatée | Nombre de lignes sources | Traitement prévu |
+|---|---:|---|---|---:|---|
+| `stations.csv` | 120 | Référentiel | Aucune anomalie détectée | 0 | Importation intégrale |
+| `trajets.csv` | 2 030 | Doublons stricts | Ligne strictement identique à une ligne précédente | 12 | Écarter la répétition |
+| `trajets.csv` | 2 030 | Format d'horodatage | Horodatage nécessitant une normalisation | 5 | Conversion au format ISO |
+| `trajets.csv` | 2 030 | RG2/RG3 | Référence de station inconnue à l'arrivée | 7 | Rejet journalisé |
+| `trajets.csv` | 2 030 | RG4 | Durée nulle ou négative | 10 | Rejet journalisé |
+| `incidents.csv` | 180 | RG7 | Statut nécessitant une normalisation (casse ou espaces) | 125 | Normalisation vers un statut valide |
+| `incidents.csv` | 180 | RG7 | Dont statut `en cours` avec espace | 46 | Normalisation vers `en_cours` |
+| `incidents.csv` | 180 | RG8 | Date de résolution antérieure au signalement | 3 | Rejet journalisé |
 
-### Gestion du traitement des anomalies
-Correction  : appliquée lorsque la donnée d'origine est récupérable sans perte d'information (standardisation de la casse du statut, conversion de la date au format ISO).
+Les critères comptent les anomalies brutes par règle et peuvent se chevaucher ;
+leur somme n'est donc pas le nombre de lignes uniques à rejeter. L'importeur
+traite les doublons avant les validations suivantes et journalise le premier
+motif de rejet rencontré. Cela explique notamment que son journal contienne
+9 rejets pour durée invalide alors que 10 lignes sources ont une durée
+invalide, et 4 normalisations d'horodatage alors que 5 lignes en nécessitent
+une.
 
-Rejet de la ligne : appliqué dès lors qu'une contrainte d'intégrité ou de validité métier est rompue (station inexistante, durée de course négative, incohérence temporelle).
-
-
-### Synthèse quantitative des anomalies et politiques de traitement
-
-| Fichier source | Volume brut | Règle / Contrainte | Défaut identifié | Nb lignes | Traitement retenu |
-|---|---|---|---|---|---|
-| `stations.csv` | 120 | Référentiel | Aucune anomalie détectée (120 stations conformes) | 0 | Importation intégrale |
-| `trajets.csv` | 2 030 | Clé primaire (`trajet_id`) | Présence de doublons sur la clé primaire | 12 | Dédoublonnage (1ère occurrence conservée) |
-| `trajets.csv` | 2 030 | Format horodatage | Format date non ISO (`JJ/MM/AAAA HH:MM`) | 5 | Normalisation en format ISO `AAAA-MM-JJ HH:MM:SS` |
-| `trajets.csv` | 2 030 | RG2 / RG3 (Intégrité FK) | Référence à une station inexistante | 7 | Rejet journalisé |
-| `trajets.csv` | 2 030 | RG4 (Durée valide) | Durées de trajets négatives ou nulles | 10 | Rejet journalisé |
-| `incidents.csv` | 180 | RG7 (Machine à états) | Statut non normalisé avec espace (`en cours`) | 46 | Normalisation automatique en `en_cours` |
-| `incidents.csv` | 180 | RG8 (Cohérence temporelle) | Date de résolution antérieure au signalement | 0 | Conforme (aucun rejet sur ce critère) |
+Le journal `docs/rapport_import.csv` contient 419 événements pour ce jeu de
+données : 28 rejets et 4 normalisations pour les trajets, puis 3 rejets et
+384 normalisations pour les incidents. Il compte les événements de traitement
+(normalisations comprises), et non les anomalies brutes par règle.

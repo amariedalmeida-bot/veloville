@@ -107,6 +107,38 @@ def valider_duree(valeur: Any) -> Tuple[bool, Optional[str]]:
         return False, f"Rejet RG4 : durée non numérique ({valeur})"
 
 
+def valider_capacite(valeur: Any) -> Tuple[bool, Optional[int], Optional[str]]:
+    """Règle RG1 : la capacité d'une station doit être un entier strictement positif."""
+    try:
+        capacite = int(valeur)
+    except (ValueError, TypeError):
+        return False, None, f"Rejet RG1 : capacité non entière ({valeur})"
+
+    if capacite <= 0:
+        return False, None, f"Rejet RG1 : capacité invalide ({capacite}), attendu > 0"
+
+    return True, capacite, None
+
+
+def fiabiliser_cible_incident(
+    cible: Optional[str],
+    velo_id: Optional[str],
+    station_id: Optional[str],
+) -> Tuple[Optional[str], Optional[str]]:
+    """Règle RG6 : valide la cible d'incident et sa référence unique."""
+    cible_normalisee = (cible or "").strip().lower()
+    velo_renseigne = bool((velo_id or "").strip())
+    station_renseignee = bool((station_id or "").strip())
+
+    if cible_normalisee == "velo" and velo_renseigne and not station_renseignee:
+        return "velo", None
+    if cible_normalisee == "station" and station_renseignee and not velo_renseigne:
+        return "station", None
+    if cible_normalisee not in {"velo", "station"}:
+        return None, f"Rejet RG6 : cible inconnue ({cible})"
+    return None, f"Rejet RG6 : références incohérentes pour la cible '{cible_normalisee}'"
+
+
 def valider_station_existante(
     station_id: Optional[str],
     stations_connues: Set[str],
