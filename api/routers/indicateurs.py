@@ -1,13 +1,7 @@
-"""Routeur indicateurs.
-
-À compléter : GET /indicateurs/activite-par-jour,
-GET /indicateurs/stations-actives et
-GET /indicateurs/incidents-par-statut.
-"""
-"""Routeur FastAPI pour les indicateurs metiers."""
+﻿"""Routeur FastAPI pour les indicateurs metiers."""
 
 from datetime import date
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
@@ -30,7 +24,7 @@ def obtenir_activite_par_jour(
     date_fin: Optional[date] = Query(None, description="Date de fin (YYYY-MM-DD)"),
     db: Session = Depends(get_db),
     _user: Utilisateur = Depends(utilisateur_courant),
-):
+) -> List[Dict[str, Any]]:
     """Calcule le nombre de trajets par jour sur une periode donnee."""
     return activite_par_jour(session=db, date_debut=date_debut, date_fin=date_fin)
 
@@ -40,7 +34,7 @@ def obtenir_stations_actives(
     limite: int = Query(10, ge=1, le=100, description="Nombre maximal de stations retournees"),
     db: Session = Depends(get_db),
     _user: Utilisateur = Depends(utilisateur_courant),
-):
+) -> List[Dict[str, Any]]:
     """Identifie les stations les plus actives (departs et arrivees)."""
     return stations_actives(session=db, limite=limite)
 
@@ -49,6 +43,6 @@ def obtenir_stations_actives(
 def obtenir_incidents_par_statut(
     db: Session = Depends(get_db),
     _user: Utilisateur = Depends(utilisateur_courant),
-):
+) -> List[Dict[str, Any]]:
     """Repartition des incidents par statut et delai moyen de resolution."""
     return incidents_par_statut(session=db)

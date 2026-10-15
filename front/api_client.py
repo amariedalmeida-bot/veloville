@@ -4,126 +4,176 @@
 Authorization: Bearer <jeton>, lever ErreurApi (message en français)
 sur erreur réseau, délai dépassé ou code HTTP d'erreur.
 """
-"""Client HTTP centralisé vers l'API VéloVille.
 
-Lecture de API_URL et API_TIMEOUT_SECONDES, ajout de l'en-tête
-Authorization: Bearer <jeton>, levée de ErreurApi (message en français)
-sur erreur réseau, délai dépassé ou code HTTP d'erreur.
-"""
+"""Client HTTP pour dialoguer avec l'API FastAPI VéloVille."""
 
 import os
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional, Tuple
 import requests
-from dotenv import load_dotenv
 
-load_dotenv()
-
-API_URL = os.getenv("API_URL", "http://127.0.0.1:8000").rstrip("/")
-API_TIMEOUT = int(os.getenv("API_TIMEOUT_SECONDES", "5"))
+API_URL = os.getenv("API_URL", "http://127.0.0.1:8000")
 
 
 class ErreurApi(Exception):
-    """Erreur levée lorsque l'API est injoignable ou répond en erreur."""
-    pass
+    """Exception levee en cas d'erreur de l'API."""
+
+    def __init__(self, message: str, status_code: Optional[int] = None):
+        super().__init__(message)
+        self.status_code = status_code
 
 
-def requete(
-    methode: str,
-    chemin: str,
-    token: Optional[str] = None,
-    params: Optional[Dict[str, Any]] = None,
-    json_data: Optional[Dict[str, Any]] = None,
-) -> Dict[str, Any]:
-    """Exécute une requête HTTP vers l'API avec gestion centralisée des erreurs."""
-    url = f"{API_URL}{chemin}"
-    headers = {}
-    if token:
-        headers["Authorization"] = f"Bearer {token}"
+class ApiClient:
+    """Client pour les appels a l'API FastAPI."""
 
-    try:
-        reponse = requests.request(
-            method=methode,
-            url=url,
-            headers=headers,
-            params=params,
-            json=json_data,
-            timeout=API_TIMEOUT,
-        )
-    except requests.exceptions.Timeout:
-        raise ErreurApi("Le délai d'attente de l'API a été dépassé.")
-    except requests.exceptions.ConnectionError:
-        raise ErreurApi(f"Impossible de joindre le serveur API sur {API_URL}.")
-    except requests.exceptions.RequestException as e:
-        raise ErreurApi(f"Erreur de communication avec l'API : {e}")
+    def __init__(self, base_url: str = API_URL):
+        self.base_url = base_url.rstrip("/")
 
-    if not reponse.ok:
+    def _headers(self, token: Optional[str] = None) -> Dict[str, str]:
+        headers = {"Content-Type": "application/json"}
+        if token:
+            headers["Authorization"] = f"Bearer {token}"
+        return headers
+
+    def login(
+        self, username: str, password: str
+    ) -> Tuple[Optional[str], Optional[str], Optional[str]]:
+        """Authentifie un utilisateur. Renvoie (access_token, role, erreur)."""
+        url = f"{self.base_url}/auth/login"
+        payload = {"username": username, "password": password}
         try:
-            detail = reponse.json().get("detail", reponse.text)
-        except Exception:
-            detail = reponse.text
+            reponse = requests.post(url, json=payload, timeout=5)
+            if reponse.status_code == 200:
+                data = reponse.json()
+                return data.get("access_token"), data.get("role"), None
+            if reponse.status_code == 401:
+                return None, None, "Identifiants invalides."
+            return (
+                None,
+                None,
+                f"Erreur HTTP {reponse.status_code} : {reponse.text}",
+            )
+        except requests.exceptions.RequestException as e:
+            return None, None, f"Impossible de joindre l'API : {e}"
 
-        if reponse.status_code == 401:
-            raise ErreurApi("Identifiant ou mot de passe incorrect (ou session expirée).")
-        if reponse.status_code == 403:
-            raise ErreurApi("Accès refusé : rôle insuffisant pour effectuer cette action.")
-        if reponse.status_code == 404:
-            raise ErreurApi(f"Ressource introuvable : {detail}")
-        raise ErreurApi(f"Erreur API ({reponse.status_code}) : {detail}")
+    def get_stations(
+        self,
+        token: Optional[str] = None,
+        page: int = 1,
+        taille_page: int = 20,
+        commune: Optional[str] = None,
+        statut: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Recupere la liste paginee des stations."""
+        url = f"{self.base_url}/stations"
+        params: Dict[str, Any] = {"page": page, "taille_page": taille_page}
+        if commune:
+            params["commune"] = commune
+        if statut:
+            params["statut"] = statut
 
-    return reponse.json()
+        reponse = requests.get(
+            url, params=params, headers=self._headers(token), timeout=5
+        )
+        if reponse.status_code != 200:
+            raise ErreurApi(
+                f"Erreur recuperation stations : {reponse.text}",
+                reponse.status_code,
+            )
+        return reponse.json()
+
+    def get_incidents(
+        self,
+        token: str,
+        page: int = 1,
+        taille_page: int = 20,
+        statut: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Recupere la liste des incidents."""
+        url = f"{self.base_url}/incidents"
+        params: Dict[str, Any] = {"page": page, "taille_page": taille_page}
+        if statut:
+            params["statut"] = statut
+
+        reponse = requests.get(
+            url, params=params, headers=self._headers(token), timeout=5
+        )
+        if reponse.status_code != 200:
+            raise ErreurApi(
+                f"Erreur recuperation incidents : {reponse.text}",
+                reponse.status_code,
+            )
+        return reponse.json()
+
+    def modifier_statut_incident(
+        self, token: str, incident_id: str, nouveau_statut: str
+    ) -> Dict[str, Any]:
+        """Modifie le statut d'un incident."""
+        url = f"{self.base_url}/incidents/{incident_id}/statut"
+        payload = {"statut": nouveau_statut}
+        reponse = requests.put(
+            url, json=payload, headers=self._headers(token), timeout=5
+        )
+        if reponse.status_code != 200:
+            raise ErreurApi(
+                f"Erreur modification statut : {reponse.text}",
+                reponse.status_code,
+            )
+        return reponse.json()
+
+    def get_indicateurs_activite(
+        self,
+        token: str,
+        date_debut: Optional[str] = None,
+        date_fin: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
+        """Recupere l'activite par jour."""
+        url = f"{self.base_url}/indicateurs/activite-par-jour"
+        params = {}
+        if date_debut:
+            params["date_debut"] = date_debut
+        if date_fin:
+            params["date_fin"] = date_fin
+
+        reponse = requests.get(
+            url, params=params, headers=self._headers(token), timeout=5
+        )
+        if reponse.status_code != 200:
+            raise ErreurApi(
+                f"Erreur indicateurs activite : {reponse.text}",
+                reponse.status_code,
+            )
+        return reponse.json()
+
+    def get_indicateurs_stations_actives(
+        self, token: str, limite: int = 10
+    ) -> List[Dict[str, Any]]:
+        """Recupere le top des stations actives."""
+        url = f"{self.base_url}/indicateurs/stations-actives"
+        reponse = requests.get(
+            url,
+            params={"limite": limite},
+            headers=self._headers(token),
+            timeout=5,
+        )
+        if reponse.status_code != 200:
+            raise ErreurApi(
+                f"Erreur indicateurs stations : {reponse.text}",
+                reponse.status_code,
+            )
+        return reponse.json()
+
+    def get_indicateurs_incidents_par_statut(
+        self, token: str
+    ) -> List[Dict[str, Any]]:
+        """Recupere la repartition des incidents par statut."""
+        url = f"{self.base_url}/indicateurs/incidents-par-statut"
+        reponse = requests.get(url, headers=self._headers(token), timeout=5)
+        if reponse.status_code != 200:
+            raise ErreurApi(
+                f"Erreur indicateurs incidents : {reponse.text}",
+                reponse.status_code,
+            )
+        return reponse.json()
 
 
-def login(username: str, password: str) -> Dict[str, Any]:
-    """Authentification via POST /auth/login."""
-    return requete("POST", "/auth/login", json_data={"username": username, "password": password})
-
-
-def get_sante() -> Dict[str, Any]:
-    """Vérification de l'état de l'API via GET /sante."""
-    return requete("GET", "/sante")
-
-
-def get_stations(token: str, page: int = 1, taille_page: int = 20) -> Dict[str, Any]:
-    """Récupère la liste paginée des stations."""
-    return requete("GET", "/stations", token=token, params={"page": page, "taille_page": taille_page})
-
-
-def get_incidents(
-    token: str,
-    statut: Optional[str] = None,
-    page: int = 1,
-    taille_page: int = 20,
-) -> Dict[str, Any]:
-    """Récupère la liste paginée des incidents avec filtre éventuel."""
-    params: Dict[str, Any] = {"page": page, "taille_page": taille_page}
-    if statut:
-        params["statut"] = statut
-    return requete("GET", "/incidents", token=token, params=params)
-
-
-def update_statut_incident(
-    token: str,
-    incident_id: str,
-    nouveau_statut: str,
-    technicien: Optional[str] = None,
-) -> Dict[str, Any]:
-    """Met à jour le statut d'un incident via PUT /incidents/{incident_id}/statut."""
-    payload = {"nouveau_statut": nouveau_statut}
-    if technicien:
-        payload["technicien"] = technicien
-    return requete("PUT", f"/incidents/{incident_id}/statut", token=token, json_data=payload)
-
-def get_indicateurs_activite_jour(token: str, date_jour: Optional[str] = None) -> Dict[str, Any]:
-    """Récupère l'indicateur d'activité journalière via GET /indicateurs/activite-par-jour."""
-    params = {"date": date_jour} if date_jour else None
-    return requete("GET", "/indicateurs/activite-par-jour", token=token, params=params)
-
-
-def get_indicateurs_rotations(token: str) -> Dict[str, Any]:
-    """Récupère les stations actives via GET /indicateurs/stations-actives."""
-    return requete("GET", "/indicateurs/stations-actives", token=token)
-
-
-def get_indicateurs_incidents_statut(token: str) -> Dict[str, Any]:
-    """Récupère la répartition des incidents via GET /indicateurs/incidents-statut."""
-    return requete("GET", "/indicateurs/incidents-statut", token=token)
+client_api = ApiClient()
