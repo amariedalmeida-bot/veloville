@@ -7,7 +7,7 @@ jamais en memoire applicative.
 
 from datetime import date, datetime
 from typing import Any, Dict, List, Optional
-from sqlalchemy import String, cast, column, func, select, table, text
+from sqlalchemy import Date, String, cast, column, func, select, table, text
 from sqlalchemy.orm import Session
 
 
@@ -24,28 +24,48 @@ def activite_par_jour(
         column("duree_secondes"),
     )
 
-    col_jour_str = func.substr(cast(trajet.c.depart_horodatage, String), 1, 10).label("jour")
+    dialect_name = session.bind.dialect.name if session.bind else "postgresql"
+
+    # SQLite (tests unitaires) stocke du texte ISO, PostgreSQL stocke du TIMESTAMP
+    if dialect_name == "sqlite":
+        col_jour = func.substr(cast(trajet.c.depart_horodatage, String), 1, 10).label("jour")
+        filtre_debut = func.substr(cast(trajet.c.depart_horodatage, String), 1, 10) >= str(date_debut) if date_debut else None
+        filtre_fin = func.substr(cast(trajet.c.depart_horodatage, String), 1, 10) <= str(date_fin) if date_fin else None
+    else:
+        col_jour = cast(trajet.c.depart_horodatage, Date).label("jour")
+        filtre_debut = cast(trajet.c.depart_horodatage, Date) >= date_debut if date_debut else None
+        filtre_fin = cast(trajet.c.depart_horodatage, Date) <= date_fin if date_fin else None
+
     duree_expr = func.round(func.avg(trajet.c.duree_secondes), 1)
 
     stmt = select(
-        col_jour_str,
+        col_jour,
         func.count().label("nombre_trajets"),
         duree_expr.label("duree_moyenne_secondes"),
     ).select_from(trajet)
 
-    if date_debut:
-        stmt = stmt.where(func.substr(cast(trajet.c.depart_horodatage, String), 1, 10) >= str(date_debut))
-    if date_fin:
-        stmt = stmt.where(func.substr(cast(trajet.c.depart_horodatage, String), 1, 10) <= str(date_fin))
+    if filtre_debut is not None:
+        stmt = stmt.where(filtre_debut)
+    if filtre_fin is not None:
+        stmt = stmt.where(filtre_fin)
 
-    stmt = stmt.group_by(col_jour_str).order_by(col_jour_str.asc())
+    stmt = stmt.group_by(col_jour).order_by(col_jour.asc())
 
     resultats = session.execute(stmt).all()
 
     sorties = []
     for ligne in resultats:
-        val_date_str = str(ligne[0])[:10]
-        val_date_obj = datetime.strptime(val_date_str, "%Y-%m-%d").date()
+        val_date = ligne[0]
+        if isinstance(val_date, str):
+            val_date_str = val_date[:10]
+            val_date_obj = datetime.strptime(val_date_str, "%Y-%m-%d").date()
+        elif isinstance(val_date, (date, datetime)):
+            val_date_obj = val_date if isinstance(val_date, date) else val_date.date()
+            val_date_str = val_date_obj.isoformat()
+        else:
+            val_date_str = str(val_date)
+            val_date_obj = date.fromisoformat(val_date_str)
+
         nb = int(ligne[1])
         duree = round(float(ligne[2]), 1) if ligne[2] is not None else 0.0
 

@@ -1,9 +1,5 @@
-"""Authentification et autorisation.
+﻿"""Authentification et autorisation."""
 
-À compléter : vérification d'un mot de passe contre son hachage bcrypt, création et
-décodage du JWT (secret et algorithme lus dans l'environnement),
-dépendances utilisateur_courant() et exiger_role("exploitant").
-"""
 import os
 from datetime import datetime, timedelta, timezone
 from typing import Callable, Optional
@@ -18,23 +14,22 @@ from api.database import get_db
 from api.models import Utilisateur
 
 # Configuration issue de l'environnement (.env)
-SECRET_KEY = os.getenv("JWT_SECRET_KEY", "secret-cle-veloville-epreuve-2026")
+SECRET_KEY = os.getenv("JWT_SECRET") or os.getenv("JWT_SECRET_KEY") or "secret-cle-veloville-epreuve-2026"
 ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")
 ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("JWT_EXPIRE_MINUTES", "60"))
 
-# Schéma de sécurité HTTP Bearer pour FastAPI
 bearer_scheme = HTTPBearer(auto_error=False)
 
 
 def hacher_mot_de_passe(mot_de_passe_clair: str) -> str:
-    """Génère une empreinte bcrypt à partir d'un mot de passe en clair."""
+    """Genere une empreinte bcrypt a partir d'un mot de passe en clair."""
     octets = mot_de_passe_clair.encode("utf-8")
     sel = bcrypt.gensalt()
     return bcrypt.hashpw(octets, sel).decode("utf-8")
 
 
 def verifier_mot_de_passe(mot_de_passe_clair: str, mot_de_passe_hache: str) -> bool:
-    """Vérifie un mot de passe en clair contre son empreinte bcrypt."""
+    """Verifie un mot de passe en clair contre son empreinte bcrypt."""
     try:
         octets = mot_de_passe_clair.encode("utf-8")
         hache_octets = mot_de_passe_hache.encode("utf-8")
@@ -44,7 +39,7 @@ def verifier_mot_de_passe(mot_de_passe_clair: str, mot_de_passe_hache: str) -> b
 
 
 def creer_jeton_acces(data: dict, duree_minutes: Optional[int] = None) -> str:
-    """Crée un jeton JWT signé avec une expiration."""
+    """Cree un jeton JWT signe (HS256) avec date d'expiration."""
     a_coder = data.copy()
     expiration = datetime.now(timezone.utc) + timedelta(
         minutes=duree_minutes or ACCESS_TOKEN_EXPIRE_MINUTES
@@ -57,7 +52,7 @@ def utilisateur_courant(
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(bearer_scheme),
     db: Session = Depends(get_db),
 ) -> Utilisateur:
-    """Récupère l'utilisateur authentifié via son jeton Bearer (401 si absent ou invalide)."""
+    """Recupere l'utilisateur authentifie via son jeton Bearer (401 si absent ou invalide)."""
     if credentials is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -73,11 +68,12 @@ def utilisateur_courant(
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Jeton invalide (identifiant absent)",
+                headers={"WWW-Authenticate": "Bearer"},
             )
     except jwt.PyJWTError:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Jeton invalide ou expiré",
+            detail="Jeton invalide ou expire",
             headers={"WWW-Authenticate": "Bearer"},
         )
 
@@ -86,19 +82,20 @@ def utilisateur_courant(
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Utilisateur introuvable",
+            headers={"WWW-Authenticate": "Bearer"},
         )
     return utilisateur
 
 
 def exiger_role(*roles_autorises: str) -> Callable:
-    """Fabrique une dépendance FastAPI refusant l'accès avec 403 si le rôle est insuffisant."""
+    """Fabrique une dependance FastAPI refusant l'acces avec 403 si le role est insuffisant."""
     def verification_role(
         utilisateur: Utilisateur = Depends(utilisateur_courant),
     ) -> Utilisateur:
         if utilisateur.role not in roles_autorises:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail=f"Accès refusé pour le rôle : {utilisateur.role}",
+                detail=f"Action interdite : role {', '.join(roles_autorises)} requis",
             )
         return utilisateur
 
