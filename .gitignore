@@ -51,3 +51,5 @@ journal_rejets*.log
 
 # Streamlit
 .streamlit/secrets.toml
+
+veloville.db

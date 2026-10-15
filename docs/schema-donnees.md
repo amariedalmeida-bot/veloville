@@ -106,7 +106,7 @@ Elle gère les accès sécurisés à l'API et au tableau de bord .
 ---
 
 ## 5. Rapport d'audit des exports bruts de billettique
-
+"""pb a ne pas prendre en comptes"""
 Les trois exports CSV (`stations.csv`, `trajets.csv`, `incidents.csv`) ont été audités.
 
 ### Synthèse quantitative des anomalies et politiques de traitement
@@ -125,3 +125,16 @@ Les trois exports CSV (`stations.csv`, `trajets.csv`, `incidents.csv`) ont été
 Correction  : appliquée lorsque la donnée d'origine est récupérable sans perte d'information (standardisation de la casse du statut, conversion de la date au format ISO).
 
 Rejet de la ligne : appliqué dès lors qu'une contrainte d'intégrité ou de validité métier est rompue (station inexistante, durée de course négative, incohérence temporelle).
+
+
+### Synthèse quantitative des anomalies et politiques de traitement
+
+| Fichier source | Volume brut | Règle / Contrainte | Défaut identifié | Nb lignes | Traitement retenu |
+|---|---|---|---|---|---|
+| `stations.csv` | 120 | Référentiel | Aucune anomalie détectée (120 stations conformes) | 0 | Importation intégrale |
+| `trajets.csv` | 2 030 | Clé primaire (`trajet_id`) | Présence de doublons sur la clé primaire | 12 | Dédoublonnage (1ère occurrence conservée) |
+| `trajets.csv` | 2 030 | Format horodatage | Format date non ISO (`JJ/MM/AAAA HH:MM`) | 5 | Normalisation en format ISO `AAAA-MM-JJ HH:MM:SS` |
+| `trajets.csv` | 2 030 | RG2 / RG3 (Intégrité FK) | Référence à une station inexistante | 7 | Rejet journalisé |
+| `trajets.csv` | 2 030 | RG4 (Durée valide) | Durées de trajets négatives ou nulles | 10 | Rejet journalisé |
+| `incidents.csv` | 180 | RG7 (Machine à états) | Statut non normalisé avec espace (`en cours`) | 46 | Normalisation automatique en `en_cours` |
+| `incidents.csv` | 180 | RG8 (Cohérence temporelle) | Date de résolution antérieure au signalement | 0 | Conforme (aucun rejet sur ce critère) |
